@@ -1,0 +1,373 @@
+---
+title: "Natural Language Processing - A classification of SMS as Ham and Spam using Naive Bayes Algorithm"
+author: "Dayo John"
+date: "22 April 2018"
+output: html_document
+---
+
+## Naive Bayes (Part 1)
+
+The part 1 of this project will focus on the classification of SMS messages to `HAM` and `SPAM`. The `HAM` is for the good SMS while the `SPAM` is for the bad one. The primary focus is to use the Naive Bayes classifier and train our model using the Laplace Estimator.
+
+The following steps will be taken:
+
+1. Getting Dataset
+2. Loading Dataset
+3. Data Exploration and Observation
+4. Data Cleansing and Standardization
+5. Word Cloud (Optional)
+6. Creating DTM Sparse Matrix
+7. Creating Training and Test Data
+8. Reducing the Word Frequency
+9. Observe the Process (so far)
+10. Apply the Naive Bayes Algorithm for Model
+11. Improving Model
+12. Remark
+
+
+### 1. Getting Dataset
+The dataset was downloaded to a desire folder from the link - [SMS Spam Collection v. 1](http://www.dt.fee.unicamp.br/~tiago/smsspamcollection/smsspamcollection.zip).
+
+### 2. Loading Dataset
+
+```{r Reading the data}
+ham_spam_SMS_messages <- read.table(file.choose(), sep = "\t", stringsAsFactors = F, quote = "")
+```
+
+```{r View the data}
+head(ham_spam_SMS_messages)
+```
+
+```{r The Header V1 and V2 are renamed to "Type" and "Text" respectively for clarity}
+names(ham_spam_SMS_messages) <- c("Type", "Text")
+```
+
+```{r View the Data again to see the new header}
+head(ham_spam_SMS_messages)
+```
+
+### 3. Data Exploration and Observation
+In this section, the data exploration was to inspect the structure of the datasetby using the `str` function.
+
+```{r view data}
+str(ham_spam_SMS_messages)
+```
+
+Since we are dealing with a classification problem, it is important that we convert the <<Type>> field of the dataset to FACTOR (`HAM - 1` and `SPAM - 2`).
+
+```{r Convert the `Type` field of the date to FACTOR}
+ham_spam_SMS_messages$Type <- factor(ham_spam_SMS_messages$Type)
+```
+
+Then, view the result of the converted field as follows:
+
+```{r View the result of the conversion}
+str(ham_spam_SMS_messages$Type)
+```
+
+Afterwards, check the count for the unique factors.
+
+```{r Count the unique factor}
+table(ham_spam_SMS_messages$Type)
+```
+
+### 4. Data Cleansing and Standardization
+To do the data cleaning and standardization,  important that the following are done using the `tm_map()` function:
+
+* Install packages where necessary - `tm` and `slam`
+* Create a Volatile Corpus `(VCorpus)` for the data
+* `tolower()`: Make all characters lowercase
+* `removePunctuation()`: Remove all punctuation marks
+* `removeNumbers()`: Remove numbers
+* `stripWhitespace()`: Remove excess whitespace
+* `stopwords()`: Remove stopwords/filler words such as to, and, but *et cetera*
+* `stemDocument()` for whole document and `wordStem()` for single words
+
+
+```{r load the library tm (install packages (where necessary) `nlp`, `tm` and `slam`}
+library(tm)
+```
+
+__NOTE:__ 
+
+1. The "Corpus" is a collection of text documents.
+2. There are two types of `CORPUS` data type, the Permanent Corpus, `PCorpus` and the Volatile Corpus, `VCorpus`. The difference between the two corpuses is in the way they are stored (on the computer).
+3. For this task, a `VCorpus` is used because it is held in the computer's Random Access Memory (would be destroyed when the R object containing it is destroyed) while `PCorpus` is stored on the disk (stores outside the memory, *for example in a Database*). So for memory efficiency, the `VCorpus` is preferred.
+4. The `VCorpus` is part of the `tm`  used for natural language processing (NLP). It is needed to convert to Corpus.
+5. Also, to be noted, is that `tolower` is part of base R, while the other `cleansing` functions are part of `tm` package.
+
+```{r Create a Volatile Corpus (VCorpus) for the data}
+ham_spam_SMS_messages_corpus <- VCorpus(VectorSource(ham_spam_SMS_messages$Text))
+
+```
+
+By trying to view the `VCorpus` result, the following is seen, which does not give more useful information.
+
+```{r View VCorpus of the data}
+ham_spam_SMS_messages_corpus
+
+```
+
+Therefore, to see more useful details, we can inspect the the summary brief of the `VCorpus` by using `inspect` and `as.character`. The traditional `head` will not yield desired output as it only display as `Metadata`.
+
+
+```{r View VCorpus of the data for 3 parts by inspection}
+inspect(ham_spam_SMS_messages_corpus[1:3])
+
+```
+
+
+```{r View VCorpus of the data for just 1 part using special function `as.character`}
+as.character(ham_spam_SMS_messages_corpus[[1]])
+
+```
+
+
+Additionally, the `lapply` function can be used with the special function `as.character`, which gives more detail information of the data as shown below:
+
+```{r View VCorpus of the data for the first 6 SMS messages}
+lapply(ham_spam_SMS_messages_corpus[1:6], as.character)
+
+```
+
+As part of the process of preparing data, the next things to do are change all the (text) data characters into lowercase; remove all punctuation marks; remove numbers; remove excess whitespace; remove stopwords/filler words; and stem the words accordingly.
+
+
+* `tolower()`: Make all characters lowercase; this is ideal in Natural Language Processing.
+
+```{r Change all characters to lowercase}
+ham_spam_SMS_corpus_clean <- tm_map(ham_spam_SMS_messages_corpus, content_transformer(tolower))
+
+```
+
+* `removePunctuation()`: Remove all punctuation marks.
+
+```{r Remove all punctuation marks}
+ham_spam_SMS_corpus_clean <- tm_map(ham_spam_SMS_corpus_clean, removePunctuation)
+
+```
+
+* `removeNumbers()`: Remove numbers
+
+```{r Remove numbers}
+ham_spam_SMS_corpus_clean <- tm_map(ham_spam_SMS_corpus_clean, removeNumbers)
+
+```
+
+* `stripWhitespace()`: Remove excess whitespace. For this, the `SnowballC` library needs to be loaded (the package shoud be installed should the library be missing)
+
+```{r Remove or strip the excess whitespace}
+library(SnowballC)
+ham_spam_SMS_corpus_clean <- tm_map(ham_spam_SMS_corpus_clean, stripWhitespace)
+
+```
+
+
+* `stopwords()`: Remove stopwords/filler words such as to, and, but et cetera.
+
+```{r stopwords/filler words}
+ham_spam_SMS_corpus_clean <- tm_map(ham_spam_SMS_corpus_clean, removeWords, stopwords()) # stopwords("en")
+
+```
+
+
+* `stemDocument()` for whole document and `wordStem()` for single words
+
+```{r Stem the words}
+ham_spam_SMS_corpus_clean <- tm_map(ham_spam_SMS_corpus_clean, stemDocument)
+
+```
+
+
+### 5. Word Cloud (Optional)
+This is an optional task, we can view the `WORD CLOUD` to visual the extent of some words. To do this, the `wordcloud` package needs to be installed; then the `wordcloud` library loaded accordingly.
+
+```{r Install `wordcloud` package and load the library}
+library(wordcloud)
+
+```
+
+The output of the wordcloud is given below for observation:
+
+
+```{r This creates the WordCloud}
+wordcloud(ham_spam_SMS_corpus_clean, scale=c(2,.5), min.freq = 10, max.words = 300,
+          random.order = FALSE, rot.per = .5, 
+          colors= palette())
+```
+
+
+### 6. Creating DTM Sparse Matrix
+The Document-Term Matrix (DTM) or Term-Document Matrix (TDM) is a mathematical matrix that describes the frequency of terms that occur basically in documents' collection. [See more here](https://en.wikipedia.org/wiki/Document-term_matrix). For a DTM, the rows correspond to the documents while the columns correspond to terms in the collection. The TDM is a transpose of the DTM, meaning the rows correspond to terms and the columns are documents. The TDM will be ideal for cases where the number of documents is small while the word list is large. For this task, the DTM is created.
+
+
+```{r Create the DTM Sparse Matrix and view the output}
+ham_spam_SMS_corpus_dtm <- DocumentTermMatrix(ham_spam_SMS_corpus_clean)
+ham_spam_SMS_corpus_dtm
+
+```
+
+To see a more detail DTM output, the special function `as.matrix` was used. The result as shown below, provides insights into the frequency of words in the documents (this view is only for the top 10 rows and first 10 columns).
+
+
+```{r To the view the DTMs top 10 rows and first 10 columns}
+ham_spam_SMS_corpus_dtmMAtrix <- as.matrix(ham_spam_SMS_corpus_dtm)
+ham_spam_SMS_corpus_dtmMAtrix[1:10, 1:10]
+
+```
+
+### 7. Creating Training and Test Data
+To create the Training and Test Data, a split ratio is used with the training set having more. In this task, there are `5574`. A reasonable ratio is `70%:30%`. This gives: `[1:3901, ]` and `[3901:5574, ]`.
+
+```{r Splitting the DTM to Training and Test Datasets}
+ham_spam_SMS_training_set <- ham_spam_SMS_corpus_dtm[1:3901, ]
+ham_spam_SMS_test_set <- ham_spam_SMS_corpus_dtm[3901:5574, ]
+
+```
+
+Afterwards, the `Type` labels are created from the raw data to be able to check how the `HAM` and `SPAM` data are distributed; and the `prop.table` is used to see the distribution.
+
+```{r Creates Labels from the raw data}
+ham_spam_SMS_training_set_Labels <- ham_spam_SMS_messages[1:3901, ]$Type
+ham_spam_SMS_test_set_Labels <- ham_spam_SMS_messages[3901:5574, ]$Type
+
+```
+
+```{r Use `prop.table` see the distribution for Training Set Label}
+prop.table(table(ham_spam_SMS_training_set_Labels))
+```
+
+```{r Use `prop.table` see the distribution for Test Set Label}
+prop.table(table(ham_spam_SMS_test_set_Labels))
+```
+
+With the result showing about `87% Ham` and `13% Spam` for Training Set label and about `86% Ham` and `14% Spam` for the Test Set label, it shows the distribution is fairly even and we have got a dataset to work it.
+
+### 8. Reducing the Word Frequency
+At this point, words with significantly low frequencies are trimmed out of the training data to improve performance. In this case, terms (words) appearing less than 10 times are removed.
+
+
+```{r Reduce words occuring more than 10 times}
+ham_spam_SMS_freq_words <- findFreqTerms(ham_spam_SMS_training_set, 10)
+```
+
+```{r See sample string output}
+str(ham_spam_SMS_freq_words)
+```
+
+The more frequent terms from the training set are then used to get all the rows containing the frequent terms.
+
+```{r Creates the rows containing most frequent words more than 10}
+ham_spam_SMS_training_set_freq10 <- ham_spam_SMS_training_set[, ham_spam_SMS_freq_words]
+ham_spam_SMS_test_set_freq10 <- ham_spam_SMS_test_set[, ham_spam_SMS_freq_words]
+```
+
+View the sample output as shown below:
+
+```{r Sample string output training set frequency more than 10}
+str(ham_spam_SMS_training_set_freq10)
+```
+
+```{r Sample string output test set frequency more than 10}
+str(ham_spam_SMS_test_set_freq10)
+```
+
+The string output above shows the frequency of words accordingly. But the priority is not in the frequency of words or terms  are repeated but it is important we check whether the words is there or not. To do this, a simple `BOOLEAN` operational function is created for a `YES`, if the value is more than `0` and `NO`, if it is `0`.
+
+```{r Boolean function for count}
+convert_counts <- function(x) {x <- ifelse(x > 0, "YES", "NO")}
+```
+
+The Boolean function is then applied as follows training and test data set with frequency more than 10.
+
+```{r Boolean Operation on Training and Test Data set for Frequency of terms more than 10}
+ham_spam_SMS_train <- apply(ham_spam_SMS_training_set_freq10, MARGIN = 2, convert_counts)
+ham_spam_SMS_test <- apply(ham_spam_SMS_test_set_freq10, MARGIN = 2, convert_counts)
+```
+
+### 9. Observe the Process (so far)
+
+```{r Result of Boolean Operation on Training Data set for Frequency of terms more than 10}
+str(ham_spam_SMS_train)
+```
+
+```{r Result of Boolean Operation on Test Data set for Frequency of terms more than 10}
+str(ham_spam_SMS_test)
+```
+
+### 10. Apply the Naive Bayes Algorithm
+The next step is to train the model using the Naive Bayes Algorithm.
+
+```{r Applying Naive Bayes Algorithm}
+# install.packages("e1071")
+library(e1071)
+ham_spam_NB_ModelClassifier <- naiveBayes(ham_spam_SMS_train, ham_spam_SMS_training_set_Labels) # Creates the Model Classifier
+```
+
+The Naive Bayes Model performance is then evaluated as follows:
+
+```{r Evaluate the Naive Bayes Model Performance on the Test Data, Creates the Predictor}
+ham_spam_NB_Predict <- predict(ham_spam_NB_ModelClassifier, ham_spam_SMS_test) # Tests the Model Classifier
+```
+
+The effectiveness of the created prediction is then tested using the `gmodels`
+
+```{r gmodels to test the effectiveness of the prediction}
+# install.packages("gmodels")
+library(gmodels)
+CrossTable(ham_spam_NB_Predict, ham_spam_SMS_test_set_Labels, prop.chisq = FALSE, prop.t = FALSE, dnn = c('NB Prediction', 'Actual'))
+```
+
+From the prediction performance test result above (Cell Content above), it was observed that the model was able to predict `1436` correct `HAM` and `32` wrong `SPAM` for the actual; and `10` wrong HAM and `196` correct `SPAM`.
+
+The result shows:
+
+1. `HAM`: `97.8%` correct predictions, and `2.2%` wrong predictions
+2. `SPAM`: `95.1%` correct predictions, and `4.9%` wrong predictions
+
+### 11. Improving Model
+This result appears very good, but to improve the result, the `LAPLACE` estimator is used. The default value of the `LAPLACE` estimator is `0`. The default `(0)` disables Laplace smoothing, which is the case for the created model above.
+
+The earlier created model could be written as `ham_spam_NB_ModelClassifier <- naiveBayes(ham_spam_SMS_train, ham_spam_SMS_training_set_Labels, laplace = 0)` but now, the `LAPLACE` estimator will be tuned for `1` and `2` to check whether an improved performance can be obtained.
+
+1. `LAPLACE` estimator as `1`:
+
+```{r Applying Naive Bayes Algorithm - `LAPLACE` estimator as `1`}
+ham_spam_NB_ModelClassifier_L1 <- naiveBayes(ham_spam_SMS_train, ham_spam_SMS_training_set_Labels, laplace = 1)
+```
+
+```{r Naive Bayes Model Performance on the Test Data for Laplace as 1}
+ham_spam_NB_Predict_L1 <- predict(ham_spam_NB_ModelClassifier_L1, ham_spam_SMS_test) # Tests the Model Classifier
+```
+
+Checking the effectiveness of the model once again (but now with a laplace estimator of `1`).
+
+```{r gmodels to test the effectiveness of the prediction for Laplace as 1}
+CrossTable(ham_spam_NB_Predict_L1, ham_spam_SMS_test_set_Labels, prop.chisq = FALSE, prop.t = FALSE, dnn = c('NB Prediction', 'Actual'))
+```
+
+The result shows:
+
+1. `HAM`: `98%` correct predictions, and `2%` wrong predictions
+2. `SPAM`: `97.1%` correct predictions, and `2.9%` wrong predictions
+
+This shows much improvement as the model was able to predict `1440` correct `HAM` and `30` wrong `SPAM` for the actual; and `6` wrong HAM and `198` correct `SPAM`.
+
+2. `LAPLACE` estimator as `2`:
+
+```{r Applying Naive Bayes Algorithm - `LAPLACE` estimator as `2`}
+ham_spam_NB_ModelClassifier_L2 <- naiveBayes(ham_spam_SMS_train, ham_spam_SMS_training_set_Labels, laplace = 2)
+```
+
+```{r Naive Bayes Model Performance on the Test Data for Laplace as 2}
+ham_spam_NB_Predict_L2 <- predict(ham_spam_NB_ModelClassifier_L1, ham_spam_SMS_test) # Tests the Model Classifier
+```
+
+Checking the effectiveness of the model once again (but now with a laplace estimator of `2`).
+
+```{r gmodels to test the effectiveness of the prediction for Laplace as 2}
+CrossTable(ham_spam_NB_Predict_L2, ham_spam_SMS_test_set_Labels, prop.chisq = FALSE, prop.t = FALSE, dnn = c('NB Prediction', 'Actual'))
+```
+
+### Remark
+It is observed that the `LAPLACE` estimator created an improved model that became steady (in this case). The result shows that smoothing the model with `1` or `2` gave the same result performance. There might be cases where laplace estimator might need to be tuned until an appropriate performance is achieved.
